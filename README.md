@@ -20,7 +20,9 @@ Download this repository, and extract it to your computer somewhere. You can mak
 
     sudo ln -s path/to/pulverize.php /usr/bin/pulverize
 
-Usage: pulverize.php <blender_project_file> [<number_of_processes>]
+Usage:
+
+    pulverize.php <blender_project_file> [<number_of_processes>]
 
 ## Why is it PHP?
 Cause PHP is a badass scripting language. Also, I don't know Python.
