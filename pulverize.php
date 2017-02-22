@@ -2,17 +2,29 @@
 <?php
 
 echo "Pulverize - A multi-process rendering script for Blender VSE.\n";
-echo "Version 1.0\n";
+echo "Version 1.1\n";
 echo "Copyright 2017 Hunter Perrin\n";
 echo "Licensed under GPL, just like Blender.\n";
 
 if (!isset($argv[1])) {
- die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>]\n\n");
+ die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]\nExample: pulverize project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}
+'\n\n");
 }
 
 $lineWidth = (int) exec('tput cols');
 
 $blenderFile = $argv[1];
+if (isset($argv[2])) {
+  $processCountArg = is_numeric($argv[2]) ? (int) $argv[2] : null;
+  $optionsArg =
+      is_object(json_decode($argv[2]))
+          ? $argv[2]
+          : ((isset($argv[3]) && is_object(json_decode($argv[3])))
+              ? $argv[3]
+              : 3);
+}
+
+
 $toolScript = __DIR__.'/pulverize_tool.py';
 if (!file_exists($blenderFile)) {
   die("You didn't give me a valid Blender project file.\n");
@@ -38,13 +50,22 @@ if (!is_dir($outputDir)) {
 $frameLength = $endFrame - $startFrame + 1;
 // Use half the number of logical processors reported by the system, with a max of 6.
 $processors = (int) shell_exec("cat /proc/cpuinfo | egrep \"^processor\" | wc -l");
-$processCountArg = (int) $argv[2];
 $processCount = min(floor($processors / 2), 6);
 if ($processCountArg && $processCountArg <= $processors) {
   $processCount = $processCountArg;
 }
 $processFrameCount = floor($frameLength / $processCount);
 $remainderFrames = $frameLength % $processCount;
+
+$options = [
+  'keepTempFiles' => false,
+  'displayStdErr' => false,
+];
+if ($optionsArg) {
+  foreach (json_decode($optionsArg) as $key => $value) {
+    $options[$key] = $value;
+  }
+}
 
 echo <<<EOF
 
@@ -89,7 +110,7 @@ for ($i = 0; $i < $processCount; $i++) {
     $e += $remainderFrames;
   }
 
-  $handle = proc_open("blender -b $shellBlenderFile -s $s -e $e -o {$shellOutputDir}blender_render_frames_####### -a", $descriptorspec, $pipes[$i]);
+  $handle = proc_open("blender -b $shellBlenderFile -s $s -e $e -o {$shellOutputDir}pulverize_frames_####### -a", $descriptorspec, $pipes[$i]);
   $processes[$i] = [
     'handle' => $handle,
     's' => $s,
@@ -114,9 +135,9 @@ do {
       $curProcess['time'] = time() - $startTime;
     }
     $stderr = stream_get_contents($pipes[$curI][2]);
-    if ($stderr) {
-      //echo "\n\n--------------- StdErr Processs: $curI\n";
-      //echo $stderr;
+    if ($stderr && $options['displayStdErr']) {
+      echo "\n\n--------------- StdErr Processs: $curI\n";
+      echo $stderr;
     }
     $stdout = stream_get_contents($pipes[$curI][1]);
     if ($stdout) {
@@ -143,21 +164,28 @@ echo_progress_bar($frameLength);
 
 echo_header("Step 2/2 Concatinating videos with FFMPEG");
 
-$fileLsOutput = shell_exec("cd $shellOutputDir && ls -1 blender_render_frames_*");
+$fileLsOutput = shell_exec("cd $shellOutputDir && ls -1 pulverize_frames_*");
 $files = explode("\n", trim($fileLsOutput));
 if (!$files) {
   die("Something went wrong, and I can't find the video files. Check to see if the render worked.");
 }
-$fileList = escapeshellarg(implode("|", $files));
+$fileList = "file ".implode("\nfile ", $files);
+file_put_contents("$outputDir/pulverize_input_files.txt", $fileList);
 $ext = explode(".", $files[0], 2)[1];
 $startFramePadded = str_pad($startFrame, 7, '0', STR_PAD_LEFT);
 $endFramePadded = str_pad($endFrame, 7, '0', STR_PAD_LEFT);
-echo "$ ffmpeg -v error -stats -i concat:$fileList -c copy $startFramePadded-$endFramePadded.$ext\n";
-passthru("cd $shellOutputDir && ffmpeg -v error -stats -i concat:$fileList -c copy $startFramePadded-$endFramePadded.$ext");
+$ffmpegCommand = "ffmpeg" .
+    ($options['displayStdErr'] ? "" : " -v error") .
+    " -stats -f concat -i pulverize_input_files.txt -c copy $startFramePadded-$endFramePadded.$ext";
+echo "$ $ffmpegCommand\n";
+passthru("cd $shellOutputDir && $ffmpegCommand");
 
-echo "\nRemoving temporary video files...\n";
-foreach ($files as $curFile) {
-  unlink("$outputDir/$curFile");
+if (!$options['keepTempFiles']) {
+  echo "\nRemoving temporary video files...\n";
+  unlink("$outputDir/pulverize_input_files.txt");
+  foreach ($files as $curFile) {
+    unlink("$outputDir/$curFile");
+  }
 }
 
 
