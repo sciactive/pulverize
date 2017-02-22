@@ -7,8 +7,7 @@ echo "Copyright 2017 Hunter Perrin\n";
 echo "Licensed under GPL, just like Blender.\n";
 
 if (!isset($argv[1])) {
- die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]\nExample: pulverize project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}
-'\n\n");
+ die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]\n\nExample: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'\n\nOptions are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)\n  keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted.\n  displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors.\n\n");
 }
 
 $lineWidth = (int) exec('tput cols');
