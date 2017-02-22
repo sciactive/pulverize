@@ -36,10 +36,10 @@ if (!is_dir($outputDir)) {
 }
 
 $frameLength = $endFrame - $startFrame + 1;
-// Use all but one of the processors, so the system is still responsive.
+// Use half the number of logical processors reported by the system, with a max of 6.
 $processors = (int) shell_exec("cat /proc/cpuinfo | egrep \"^processor\" | wc -l");
 $processCountArg = (int) $argv[2];
-$processCount = $processors - 1;
+$processCount = min(floor($processors / 2), 6);
 if ($processCountArg && $processCountArg <= $processors) {
   $processCount = $processCountArg;
 }
@@ -48,7 +48,7 @@ $remainderFrames = $frameLength % $processCount;
 
 echo <<<EOF
 
-It looks like your machine has $processors processor(s).
+It looks like your machine has $processors logical processor(s). The default is to use half the number of logical processors reported by the system, with a max of 6.
 
 Read from Blender file --
 startFrame: $startFrame
