@@ -5,7 +5,7 @@ A multi-process rendering script for Blender VSE.
 Pulverize is a script for rendering video from Blender using multiple processes.
 
 ## Why is it useful?
-If you have, say, 16 logical processors (like me), Blender's Video Sequence Editor will only use 1 of those when rendering. This is a huge waste of computing power, and makes render times intolerably slow. This script will render the video in parts, using one process for each part. This means renders are **16 times faster** with a machine like mine. You get all the benefits of multithreaded rendering in Blender without Blender VSE actually being multithreaded.
+If you have, say, an 8 core processor (like me), Blender's Video Sequence Editor will only use 1 of those when rendering. This is a huge waste of computing power, and makes render times intolerably slow. This script will render the video in parts, using one process for each part. This means renders are **8 times faster** with a machine like mine. You get all the benefits of multithreaded rendering in Blender without Blender VSE actually being multithreaded.
 
 ## What are the dependencies?
 You will need:
