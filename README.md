@@ -36,4 +36,5 @@ Options are given in JSON format as an object. (They should be flags, but that's
 ## Why is it PHP?
 Cause PHP is a badass scripting language. Also, I don't know Python.
 
-
+## Why is the code so unconventional (read messy)?
+Cause I wrote this for me. This is how I code when no one's watching, and judging me for that would be wrong. ;)
