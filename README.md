@@ -22,7 +22,14 @@ Download this repository, and extract it to your computer somewhere. You can mak
 
 Usage:
 
-    pulverize.php <blender_project_file> [<number_of_processes>]
+    pulverize.php <blender_project_file> [<number_of_processes>] [<options>]
+
+    Example: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'
+
+Options are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)
+
+* keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted.
+* displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors.
 
 ## Why is it PHP?
 Cause PHP is a badass scripting language. Also, I don't know Python.
