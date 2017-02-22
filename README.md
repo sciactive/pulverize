@@ -24,7 +24,9 @@ Usage:
 
     pulverize.php <blender_project_file> [<number_of_processes>] [<options>]
 
-    Example: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'
+Example:
+
+    pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'
 
 Options are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)
 
