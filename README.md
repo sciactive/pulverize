@@ -33,6 +33,18 @@ Options are given in JSON format as an object. (They should be flags, but that's
 * keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted.
 * displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors.
 
+### There's now a Python version, pulverize.py, available for use (Thanks, jpwarren!):
+Some differences from pulverize.php:
+
+It uses argparse to make it easy to add new commandline arguments
+
+    -w or --workers option to specify how many processes you want to use for rendering. Default value is the same as pulverize.php.
+    --dry-run option to test things without actually rendering or concatenating
+    --render-only option to just do the render of tempfiles, but not the concat
+    --concat-only option to concat, but skip the render stage
+
+It doesn't show progress of the rendering subprocesses, so if you want that, best to use pulverize.php instead.
+
 ## Why is it PHP?
 Cause PHP is a badass scripting language. Also, I don't know Python.
 
