@@ -1,17 +1,36 @@
 #! /usr/bin/env php
 <?php
 
+date_default_timezone_set(@date_default_timezone_get());
+
 echo "Pulverize - A multi-process rendering script for Blender VSE.\n";
 echo "Version 1.1\n";
 echo "Copyright 2017 Hunter Perrin\n";
 echo "Licensed under GPL, just like Blender.\n";
 
 if (!isset($argv[1])) {
- die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]\n\nExample: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'\n\nOptions are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)\n  keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted.\n  displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors.\n\n");
+  die(
+      "\n" .
+      "\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]" .
+      "\n" .
+      "\nExample: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'" .
+      "\n" .
+      "\nOptions are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)" .
+      "\n  keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted." .
+      "\n  displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors." .
+      "\n" .
+      "\n"
+  );
 }
 
-$lineWidth = (int) exec('tput cols');
+if (PHP_OS == "WINNT") {
+  $lineWidth = (int) exec('powershell ^(Get-Host^).UI.RawUI.WindowSize.width');
+} else {
+  $lineWidth = (int) exec('tput cols');
+}
 
+$processCountArg = null;
+$optionsArg = null;
 $blenderFile = $argv[1];
 if (isset($argv[2])) {
   $processCountArg = is_numeric($argv[2]) ? (int) $argv[2] : null;
@@ -34,12 +53,25 @@ if (!file_exists($toolScript)) {
 
 $shellBlenderFile = escapeshellarg($blenderFile);
 $shellToolScript = escapeshellarg($toolScript);
-$projectInfo = shell_exec("blender -b $shellBlenderFile -P $shellToolScript 2>/dev/null");
+if (PHP_OS == "WINNT") {
+  $projectInfo = shell_exec("blender -b $shellBlenderFile -P $shellToolScript 2> nul");
+} else {
+  $projectInfo = shell_exec("blender -b $shellBlenderFile -P $shellToolScript 2>/dev/null");
+}
 
 preg_match('/^FRAMES: (\d+) (\d+)$/m', $projectInfo, $matches);
 list($startFrame, $endFrame) = array_slice($matches, 1, 2);
 preg_match('/^OUTPUTDIR: (.+)$/m', $projectInfo, $matches);
 $outputDir = $matches[1];
+
+// Add support for Blender's blend files path notation
+if (substr($outputDir, 0, 2) === "//") {
+  $path_parts = pathinfo($blenderFile);
+  $blenderFilePath = realpath($path_parts['dirname']);
+
+  $outputDir = str_replace("//", $blenderFilePath . DIRECTORY_SEPARATOR, $outputDir);
+}
+
 $shellOutputDir = escapeshellarg($outputDir);
 
 if (!is_dir($outputDir)) {
@@ -48,7 +80,14 @@ if (!is_dir($outputDir)) {
 
 $frameLength = $endFrame - $startFrame + 1;
 // Use half the number of logical processors reported by the system, with a max of 6.
-$processors = (int) shell_exec("cat /proc/cpuinfo | egrep \"^processor\" | wc -l");
+// Added support for Windows 10 and MacOS
+if (PHP_OS == "WINNT") {
+  $processors = (int) shell_exec("echo %NUMBER_OF_PROCESSORS%");
+} else if (PHP_OS == "Darwin") {
+  $processors = (int) shell_exec("sysctl -n hw.ncpu");
+} else {
+  $processors = (int) shell_exec("cat /proc/cpuinfo | egrep \"^processor\" | wc -l");
+}
 $processCount = min(floor($processors / 2), 6);
 if ($processCountArg && $processCountArg <= $processors) {
   $processCount = $processCountArg;
@@ -109,16 +148,24 @@ for ($i = 0; $i < $processCount; $i++) {
     $e += $remainderFrames;
   }
 
-  $handle = proc_open("blender -b $shellBlenderFile -s $s -e $e -o {$shellOutputDir}pulverize_frames_####### -a", $descriptorspec, $pipes[$i]);
+  //$stdoutLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stdout$i.log";
+  $stdoutLogFile = tempnam(sys_get_temp_dir(), 'PLV');
+  //$stderrLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stderr$i.log";
+  $stderrLogFile = tempnam(sys_get_temp_dir(), 'PLV');
+
+  $handle = proc_open("blender -b $shellBlenderFile -s $s -e $e -o {$shellOutputDir}pulverize_frames_####### -a > $stdoutLogFile 2> $stderrLogFile", $descriptorspec, $pipes[$i]);
+  usleep(250000);
+  $stdoutHandle = fopen($stdoutLogFile, "r");
+  $stderrHandle = fopen($stderrLogFile, "r");
+
   $processes[$i] = [
     'handle' => $handle,
     's' => $s,
     'e' => $e,
-    'frame' => $s
+    'frame' => $s,
+    'stdoutHandle' => $stdoutHandle,
+    'stderrHandle' => $stderrHandle
   ];
-  stream_set_blocking($pipes[$i][0], false);
-  stream_set_blocking($pipes[$i][1], false);
-  stream_set_blocking($pipes[$i][2], false);
 }
 
 // Monitor them and print a progress bar.
@@ -128,19 +175,20 @@ do {
   $done = true;
   foreach ($processes as $curI => &$curProcess) {
     $status = proc_get_status($curProcess['handle']);
+
     if ($status['running']) {
       $done = false;
     } elseif (!isset($curProcess['time'])) {
       $curProcess['time'] = time() - $startTime;
     }
-    $stderr = stream_get_contents($pipes[$curI][2]);
+    $stderr = stream_get_contents($curProcess['stderrHandle']);
     if ($stderr && $options['displayStdErr']) {
       echo "\n\n--------------- StdErr Processs: $curI\n";
       echo $stderr;
     }
-    $stdout = stream_get_contents($pipes[$curI][1]);
+    $stdout = stream_get_contents($curProcess['stdoutHandle']);
     if ($stdout) {
-      preg_match('/^Append frame (\d+)$/m', $stdout, $matches);
+      preg_match('/^Append frame (\d+)/m', $stdout, $matches);
       if ($matches) {
         $curProcess['frame'] = (int) $matches[1];
       }
@@ -163,7 +211,12 @@ echo_progress_bar($frameLength);
 
 echo_header("Step 2/2 Concatinating videos with FFMPEG");
 
-$fileLsOutput = shell_exec("cd $shellOutputDir && ls -1 pulverize_frames_*");
+if (PHP_OS == "WINNT") {
+  $fileLsOutput = shell_exec("cd $shellOutputDir && dir /b /a-d pulverize_frames_*");
+} else {
+  $fileLsOutput = shell_exec("cd $shellOutputDir && ls -1 pulverize_frames_*");
+}
+
 $files = explode("\n", trim($fileLsOutput));
 if (!$files) {
   die("Something went wrong, and I can't find the video files. Check to see if the render worked.");
@@ -175,7 +228,7 @@ $startFramePadded = str_pad($startFrame, 7, '0', STR_PAD_LEFT);
 $endFramePadded = str_pad($endFrame, 7, '0', STR_PAD_LEFT);
 $ffmpegCommand = "ffmpeg" .
     ($options['displayStdErr'] ? "" : " -v error") .
-    " -stats -f concat -i pulverize_input_files.txt -c copy $startFramePadded-$endFramePadded.$ext";
+    " -y -stats -f concat -i pulverize_input_files.txt -c copy $startFramePadded-$endFramePadded.$ext";
 echo "$ $ffmpegCommand\n";
 passthru("cd $shellOutputDir && $ffmpegCommand");
 
@@ -186,7 +239,6 @@ if (!$options['keepTempFiles']) {
     unlink("$outputDir/$curFile");
   }
 }
-
 
 
 
@@ -278,4 +330,3 @@ function echo_progress_bar($completedFrames) {
   $progressBar = str_repeat("=", $charCount);
   echo "{$progressBar}>";
 }
-

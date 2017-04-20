@@ -10,6 +10,7 @@ If you have, say, an 8 core processor (like me), Blender's Video Sequence Editor
 ## What are the dependencies?
 You will need:
 * Blender (duh)
+  * For best results: Output as an MPEG, and encode with MPEG-4 under Format, and H.264 under Codec.
 * FFMPEG (for putting all the video parts together)
 * PHP
 * Python
