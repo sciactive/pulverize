@@ -9,7 +9,18 @@ echo "Copyright 2017 Hunter Perrin\n";
 echo "Licensed under GPL, just like Blender.\n";
 
 if (!isset($argv[1])) {
- die("\n\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]\n\nExample: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'\n\nOptions are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)\n  keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted.\n  displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors.\n\n");
+  die(
+      "\n" .
+      "\nUsage: pulverize.php <blender_project_file> [<number_of_processes>] [<options>]" .
+      "\n" .
+      "\nExample: pulverize.php project.blend 6 '{\"keepTempFiles\":true,\"displayStdErr\":true}'" .
+      "\n" .
+      "\nOptions are given in JSON format as an object. (They should be flags, but that's a TODO for another time.)" .
+      "\n  keepTempFiles defaults to false. When true, the frame range renders and the FFMPEG input script won't be deleted." .
+      "\n  displayStdErr defaults to false. When true, StdErr stream from the blender processes will be displayed along with the Pulverize progress indicator. FFMPEG will also show warnings, not just errors." .
+      "\n" .
+      "\n"
+  );
 }
 
 if (PHP_OS == "WINNT") {
@@ -54,11 +65,11 @@ preg_match('/^OUTPUTDIR: (.+)$/m', $projectInfo, $matches);
 $outputDir = $matches[1];
 
 // Add support for Blender's blend files path notation
-if (substr( $outputDir, 0, 2 ) === "//") {
+if (substr($outputDir, 0, 2) === "//") {
   $path_parts = pathinfo($blenderFile);
   $blenderFilePath = realpath($path_parts['dirname']);
 
-  $outputDir = str_replace("//", $blenderFilePath . DIRECTORY_SEPARATOR, $outputDir);  
+  $outputDir = str_replace("//", $blenderFilePath . DIRECTORY_SEPARATOR, $outputDir);
 }
 
 $shellOutputDir = escapeshellarg($outputDir);
@@ -72,7 +83,7 @@ $frameLength = $endFrame - $startFrame + 1;
 // Added support for Windows 10 and MacOS
 if (PHP_OS == "WINNT") {
   $processors = (int) shell_exec("echo %NUMBER_OF_PROCESSORS%");
-} else if (PHP_OS == "Darwin") { 
+} else if (PHP_OS == "Darwin") {
   $processors = (int) shell_exec("sysctl -n hw.ncpu");
 } else {
   $processors = (int) shell_exec("cat /proc/cpuinfo | egrep \"^processor\" | wc -l");
@@ -136,15 +147,17 @@ for ($i = 0; $i < $processCount; $i++) {
     // In the last process, add the remainder frames.
     $e += $remainderFrames;
   }
-  
-  $stdoutLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stdout$i.log";
-  $stderrLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stderr$i.log";   
-  
+
+  //$stdoutLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stdout$i.log";
+  $stdoutLogFile = tempnam(sys_get_temp_dir(), 'PLV');
+  //$stderrLogFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . "pulverize_stderr$i.log";
+  $stderrLogFile = tempnam(sys_get_temp_dir(), 'PLV');
+
   $handle = proc_open("blender -b $shellBlenderFile -s $s -e $e -o {$shellOutputDir}pulverize_frames_####### -a > $stdoutLogFile 2> $stderrLogFile", $descriptorspec, $pipes[$i]);
   usleep(250000);
   $stdoutHandle = fopen($stdoutLogFile, "r");
   $stderrHandle = fopen($stderrLogFile, "r");
-    
+
   $processes[$i] = [
     'handle' => $handle,
     's' => $s,
@@ -152,33 +165,32 @@ for ($i = 0; $i < $processCount; $i++) {
     'frame' => $s,
     'stdoutHandle' => $stdoutHandle,
     'stderrHandle' => $stderrHandle
-  ];  
+  ];
 }
 
 // Monitor them and print a progress bar.
 echo "\n\n";
-do {  
+do {
   usleep(250000);
   $done = true;
-  foreach ($processes as $curI => &$curProcess) {  
-
+  foreach ($processes as $curI => &$curProcess) {
     $status = proc_get_status($curProcess['handle']);
-    
-    if ($status['running']) {      
+
+    if ($status['running']) {
       $done = false;
-    } elseif (!isset($curProcess['time'])) {      
+    } elseif (!isset($curProcess['time'])) {
       $curProcess['time'] = time() - $startTime;
     }
-    $stderr = stream_get_contents($curProcess['stderrHandle']);    
+    $stderr = stream_get_contents($curProcess['stderrHandle']);
     if ($stderr && $options['displayStdErr']) {
       echo "\n\n--------------- StdErr Processs: $curI\n";
       echo $stderr;
     }
-    $stdout = stream_get_contents($curProcess['stdoutHandle']);        
-    if ($stdout) {            
-      preg_match('/^Append frame (\d+)/m', $stdout, $matches);      
+    $stdout = stream_get_contents($curProcess['stdoutHandle']);
+    if ($stdout) {
+      preg_match('/^Append frame (\d+)/m', $stdout, $matches);
       if ($matches) {
-        $curProcess['frame'] = (int) $matches[1];        
+        $curProcess['frame'] = (int) $matches[1];
       }
     }
   }
@@ -227,6 +239,10 @@ if (!$options['keepTempFiles']) {
     unlink("$outputDir/$curFile");
   }
 }
+
+
+
+
 
 echo_header("All done!");
 
@@ -314,4 +330,3 @@ function echo_progress_bar($completedFrames) {
   $progressBar = str_repeat("=", $charCount);
   echo "{$progressBar}>";
 }
-
