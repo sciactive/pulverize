@@ -14,7 +14,7 @@ You will need:
 * FFMPEG (for putting all the video parts together)
 * PHP
 * Python
-* Linux, or a compatible system
+* Linux, MacOS, or Windows 10
 
 ## How do I use it?
 Download this repository, and extract it to your computer somewhere. You can make a link to it to run it easily like this:
