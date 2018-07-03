@@ -14,3 +14,7 @@ def set_audio_only():
     for strip in sequences:
         if strip.type != "SOUND":
             strip.mute = True
+
+
+def mixdown(filepath):
+    bpy.ops.sound.mixdown(filepath=filepath, check_existing=False, relative_path=False, container="FLAC", codec="FLAC")

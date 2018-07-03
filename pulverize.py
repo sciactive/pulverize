@@ -80,7 +80,7 @@ def render_chunks(args, frame_start, frame_end, outdir, utilfile):
         pass
 
     # Set a worker to work on the audio
-    p = multiprocessing.Process(target=render_mixdown, args=(args, w_start_frame, w_end_frame, outdir, utilfile))
+    p = multiprocessing.Process(target=render_mixdown, args=(args, frame_start, frame_end, outdir, utilfile))
     processes.append(p)
     p.start()
     log.info("Started audio render process %d with pid %d", args.workers, p.pid)
@@ -123,58 +123,48 @@ def join_chunks(args, outdir):
         fp.write('\n'.join(["file %s" % x for x in chunk_files]))
     filebase, ext = os.path.splitext(os.path.basename(args.blendfile))
     outbase, outext = os.path.splitext(os.path.basename(chunk_files[0]))
-    outfile = '%s%s%s%s' % (outdir, os.sep, filebase, outext)
-    log.info("Joining parts into: %s", outfile)
-    params = ['ffmpeg', '-stats', '-f', 'concat',
+    video_file = '%s%s%s%s' % (outdir, os.sep, filebase, outext)
+    log.info("Joining parts into: %s", video_file)
+    join_video = ['ffmpeg', '-stats', '-f', 'concat',
             '-safe', '0',
             '-i', file_list,
-            '-c', 'copy', outfile]
-    log.debug("ffmpeg params: %s", params)
-    if not args.dry_run:
-        subprocess.check_call(params)
+            '-c', 'copy', '-y', video_file]
+    log.debug("ffmpeg params: %s", join_video)
 
-def render_mixdown(args, start_frame, end_frame, outdir, utilfile):
-    """
-    Render the audio on a single thread
-    """
-    outfilepath = '%s%spulverize_mixdown_' % (outdir, os.sep)
-    params = ['blender', '-b', args.blendfile,
-                          '-s', '%s' % start_frame,
-                          '-e', '%s' % end_frame,
-                          '-o', outfilepath,
-                          '-P', utilfile, '--python-expr',
-                          '%s pulverize_tool.set_audio_only();' % import_path,
-                          '-a']
-    log.debug("Render command: %s", params)
-    if not args.dry_run:
-        proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        stdoutdata, stderrdata = proc.communicate()
-        replace_audio_track(outfilepath)
-    pass
-
-def replace_audio_track(mixdown):
-    """
-    Overwrites the audiotrack of a video with the mixdown
-    """
-    mixdown_track = sorted(glob.glob(os.path.join(outdir, 'pulverize_mixdown_*')))[0]
-    filebase, ext = os.path.splitext(os.path.basename(args.blendfile))
-    outbase, outext = os.path.splitext(os.path.basename(mixdown_track))
-    video_file = '%s%s%s%s' % (outdir, os.sep, filebase, outext)
-    final_file = '%s%spulverized-%s%s' % (outdir, os.sep, filebase, outext)
-    log.info("Replacing audio in: %s", video_file)
-    params = ['ffmpeg', '-stats',
+    mixdown_track = '%s%s%s' % (outdir, os.sep, 'pulverize_mixdown.flac')
+    output_file = '%s%spulverized-%s%s' % (outdir, os.sep, filebase, outext)
+    join_audio = ['ffmpeg', '-stats',
             '-i', video_file,
             '-i', mixdown_track,
             '-c:v', 'copy',
             '-map', '0:v:0',
             '-map', '1:a:0',
             '-y',
-            final_file]
-    log.debug("ffmpeg params: %s", params)
+            output_file]
+    log.debug("ffmpeg params: %s", join_video)
+    if not args.dry_run:
+        log.debug('Joining video segments')
+        subprocess.check_call(join_video)
+        log.debug('Joining audio segments')
+        subprocess.check_call(join_audio)
+
+def render_mixdown(args, start_frame, end_frame, outdir, utilfile):
+    """
+    Render the audio on a single thread
+    """
+    outfilepath = '%s%spulverize_mixdown.flac' % (outdir, os.sep)
+    params = ['blender', '-b', args.blendfile,
+                          '-s', '%s' % start_frame,
+                          '-e', '%s' % end_frame,
+                          '-o', outfilepath,
+                          '-P', utilfile, '--python-expr',
+                          "%s pulverize_tool.mixdown('%s');" % (import_path, outfilepath)]
+    log.debug("Render command: %s", params)
     if not args.dry_run:
         proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         stdoutdata, stderrdata = proc.communicate()
     pass
+
 
 if __name__ == '__main__':
 
