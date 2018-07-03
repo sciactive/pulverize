@@ -20,12 +20,15 @@ import pdb
 CPUS = min(int(multiprocessing.cpu_count() / 2), 6)
 
 UTIL_SCRIPT="pulverize_tool.py"
+realpath = os.path.dirname(os.path.realpath(__file__))
+utilfile = os.path.join(realpath, UTIL_SCRIPT)
+
+import_path = "import sys; sys.path.insert(0, '%s'); import pulverize_tool;" % realpath
 
 def get_project_data(args):
-    
-    realpath = os.path.dirname(os.path.realpath(__file__))
-    utilfile = os.path.join(realpath, UTIL_SCRIPT)
-    data = subprocess.check_output(['blender', '-b', args.blendfile, '-P', utilfile]).decode("utf-8")
+
+    data = subprocess.check_output(['blender', '-b', args.blendfile, '-P', utilfile, '--python-expr',
+                                    "%s pulverize_tool.get_scene_data();" % import_path]).decode("utf-8")
 
     lines = data.split('\n')
     frameinfo = lines[0].split()
@@ -37,11 +40,11 @@ def get_project_data(args):
     frame_end = int(frameinfo[2])
     outdir = outdirinfo[1]
 
-    return(frame_start, frame_end, outdir)
+    return(frame_start, frame_end, outdir, utilfile)
 
     pass
 
-def render_chunks(args, frame_start, frame_end, outdir):
+def render_chunks(args, frame_start, frame_end, outdir, utilfile):
     """
     Divide render into even sized chunks
     """
@@ -73,9 +76,15 @@ def render_chunks(args, frame_start, frame_end, outdir):
         p = multiprocessing.Process(target=render_proc, args=(args, w_start_frame, w_end_frame, outdir))
         processes.append(p)
         p.start()
-        log.info("Started render process %d with pid %d", i, p.pid)
+        log.info("Started video render process %d with pid %d", ++i, p.pid)
         pass
 
+    # Set a worker to work on the audio
+    p = multiprocessing.Process(target=render_mixdown, args=(args, w_start_frame, w_end_frame, outdir, utilfile))
+    processes.append(p)
+    p.start()
+    log.info("Started audio render process %d with pid %d", args.workers, p.pid)
+    pass
 
     # wait for results
     for i, p in enumerate(processes):
@@ -114,7 +123,7 @@ def join_chunks(args, outdir):
         fp.write('\n'.join(["file %s" % x for x in chunk_files]))
     filebase, ext = os.path.splitext(os.path.basename(args.blendfile))
     outbase, outext = os.path.splitext(os.path.basename(chunk_files[0]))
-    outfile = '%s%s' % (filebase, outext)
+    outfile = '%s%s%s%s' % (outdir, os.sep, filebase, outext)
     log.info("Joining parts into: %s", outfile)
     params = ['ffmpeg', '-stats', '-f', 'concat',
             '-safe', '0',
@@ -124,6 +133,49 @@ def join_chunks(args, outdir):
     if not args.dry_run:
         subprocess.check_call(params)
 
+def render_mixdown(args, start_frame, end_frame, outdir, utilfile):
+    """
+    Render the audio on a single thread
+    """
+    outfilepath = '%s%spulverize_mixdown_' % (outdir, os.sep)
+    params = ['blender', '-b', args.blendfile,
+                          '-s', '%s' % start_frame,
+                          '-e', '%s' % end_frame,
+                          '-o', outfilepath,
+                          '-P', utilfile, '--python-expr',
+                          '%s pulverize_tool.set_audio_only();' % import_path,
+                          '-a']
+    log.debug("Render command: %s", params)
+    if not args.dry_run:
+        proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        stdoutdata, stderrdata = proc.communicate()
+        replace_audio_track(outfilepath)
+    pass
+
+def replace_audio_track(mixdown):
+    """
+    Overwrites the audiotrack of a video with the mixdown
+    """
+    mixdown_track = sorted(glob.glob(os.path.join(outdir, 'pulverize_mixdown_*')))[0]
+    filebase, ext = os.path.splitext(os.path.basename(args.blendfile))
+    outbase, outext = os.path.splitext(os.path.basename(mixdown_track))
+    video_file = '%s%s%s%s' % (outdir, os.sep, filebase, outext)
+    final_file = '%s%spulverized-%s%s' % (outdir, os.sep, filebase, outext)
+    log.info("Replacing audio in: %s", video_file)
+    params = ['ffmpeg', '-stats',
+            '-i', video_file,
+            '-i', mixdown_track,
+            '-c:v', 'copy',
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-y',
+            final_file]
+    log.debug("ffmpeg params: %s", params)
+    if not args.dry_run:
+        proc = subprocess.Popen(params, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        stdoutdata, stderrdata = proc.communicate()
+    pass
+
 if __name__ == '__main__':
 
     ap = argparse.ArgumentParser(description="Multi-process Blender VSE rendering",
@@ -132,15 +184,17 @@ if __name__ == '__main__':
     ap.add_argument('-w', '--workers', type=int, default=CPUS, help="Number of workers in the pool.")
     ap.add_argument('--concat-only', action='store_true', default=False, help="Don't render new sections, just concat existing ones.")
     ap.add_argument('--render-only', action='store_true', default=False, help="Render sections, but don't concat.")
+    ap.add_argument('--mixdown-only', action='store_true', default=False, help="Render and insert the mixdown audio track.")
     ap.add_argument('--dry-run', action='store_true', default=False, help="Do everything but the complex, time-consuming subprocesses.")
+
 
     ap.add_argument('blendfile', help="Blender project file to render.")
     args = ap.parse_args()
 
-    frame_start, frame_end, outdir = get_project_data(args)
+    frame_start, frame_end, outdir, utilfile = get_project_data(args)
 
     if not args.concat_only:
-        render_chunks(args, frame_start, frame_end, outdir)
+        render_chunks(args, frame_start, frame_end, outdir, utilfile)
 
     if not args.render_only:
         join_chunks(args, outdir)
