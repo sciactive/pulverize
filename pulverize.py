@@ -25,8 +25,8 @@ def get_project_data(args):
     
     realpath = os.path.dirname(os.path.realpath(__file__))
     utilfile = os.path.join(realpath, UTIL_SCRIPT)
-    data = subprocess.check_output(['blender', '-b', args.blendfile, '-P', utilfile])
-    
+    data = subprocess.check_output(['blender', '-b', args.blendfile, '-P', utilfile]).decode("utf-8")
+
     lines = data.split('\n')
     frameinfo = lines[0].split()
     # log.debug("frameinfo: %s", frameinfo)
@@ -76,7 +76,7 @@ def render_chunks(args, frame_start, frame_end, outdir):
         log.info("Started render process %d with pid %d", i, p.pid)
         pass
 
-    
+
     # wait for results
     for i, p in enumerate(processes):
         log.debug("Waiting for proc %d", i)
@@ -88,7 +88,7 @@ def render_proc(args, start_frame, end_frame, outdir):
     """
     Render a chunk of the blender file.
     """
-    outfilepath = '%spulverize_frames_#######' % outdir
+    outfilepath = '%s%spulverize_frames_#######' % (outdir, os.sep)
     params = ['blender', '-b', args.blendfile,
                           '-s', '%s' % start_frame,
                           '-e', '%s' % end_frame,
