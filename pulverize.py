@@ -76,7 +76,7 @@ def render_chunks(args, frame_start, frame_end, outdir, utilfile):
         p = multiprocessing.Process(target=render_proc, args=(args, w_start_frame, w_end_frame, outdir))
         processes.append(p)
         p.start()
-        log.info("Started video render process %d with pid %d", ++i, p.pid)
+        log.info("Started video render process %d with pid %d", i, p.pid)
         pass
 
     # Set a worker to work on the audio
