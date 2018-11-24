@@ -105,10 +105,10 @@ def join_chunks(args, outdir):
     Concatenate the video chunks together with ffmpeg
     """
     # Which files do we need to join?
-    chunk_files = sorted(glob.glob(os.path.join(outdir, 'pulverize_frames_*')))
+    chunk_files = sorted(glob.glob(outdir + 'pulverize_frames_*'))
     # log.debug("file list is: %s", chunk_files)
 
-    file_list = os.path.join(outdir, 'pulverize_input_files.txt')
+    file_list = os.path.join(os.path.dirname(outdir), 'pulverize_input_files.txt')
 
     with open(file_list, 'w') as fp:
         fp.write('\n'.join(["file %s" % x for x in chunk_files]))
