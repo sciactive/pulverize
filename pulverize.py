@@ -88,7 +88,7 @@ def render_proc(args, start_frame, end_frame, outdir):
     """
     Render a chunk of the blender file.
     """
-    outfilepath = '%spulverize_frames_#######' % outdir
+    outfilepath = os.path.join(outdir, 'pulverize_frames_#######')
     params = ['blender', '-b', args.blendfile,
                           '-s', '%s' % start_frame,
                           '-e', '%s' % end_frame,
@@ -105,8 +105,9 @@ def join_chunks(args, outdir):
     Concatenate the video chunks together with ffmpeg
     """
     # Which files do we need to join?
-    chunk_files = sorted(glob.glob(os.path.join(outdir, 'pulverize_frames_*')))
-    # log.debug("file list is: %s", chunk_files)
+    chunk_glob = os.path.join(outdir, 'pulverize_frames_*')
+    chunk_files = sorted(glob.glob(chunk_glob))
+    # log.debug("file list for %s is: %s", chunk_glob, chunk_files)
 
     file_list = os.path.join(outdir, 'pulverize_input_files.txt')
 
